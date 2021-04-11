@@ -40,7 +40,7 @@ pipeline {
     }
 
     options {
-        // Configure an overall timeout for the build of one hour.
+        // Configure an overall timeout for the build of ten hours.
         timeout(time: 10, unit: 'HOURS')
         // When we have test-fails e.g. we don't need to run the remaining steps
         skipStagesAfterUnstable()
@@ -90,75 +90,5 @@ pipeline {
                 }
             }
         }
-
-        stage('Deploy') {
-            when {
-                expression {
-                    env.BRANCH_NAME ==~ /(activemq-5.16.x|activemq-5.15.x|master)/
-                }
-            }
-            steps {
-                echo 'Deploying'
-                sh 'mvn -B -e deploy -Pdeploy -DskipTests'
-            }
-        }
     }
-
-    // Do any post build stuff ... such as sending emails depending on the overall build result.
-    post {
-        // If this build failed, send an email to the list.
-        failure {
-            script {
-                if(env.BRANCH_NAME == "activemq-5.15.x" || env.BRANCH_NAME == "activemq-5.16.x" || env.BRANCH_NAME == "master") {
-                    emailext(
-                            subject: "[BUILD-FAILURE]: Job '${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]'",
-                            body: """
-BUILD-FAILURE: Job '${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]':
-Check console output at "<a href="${env.BUILD_URL}">${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]</a>"
-""",
-                            to: "commits@activemq.apache.org",
-                            recipientProviders: [[$class: 'DevelopersRecipientProvider']]
-                    )
-                }
-            }
-        }
-
-        // If this build didn't fail, but there were failing tests, send an email to the list.
-        unstable {
-            script {
-                if(env.BRANCH_NAME == "activemq-5.15.x" || env.BRANCH_NAME == "activemq-5.16.x" || env.BRANCH_NAME == "master") {
-                    emailext(
-                            subject: "[BUILD-UNSTABLE]: Job '${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]'",
-                            body: """
-BUILD-UNSTABLE: Job '${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]':
-Check console output at "<a href="${env.BUILD_URL}">${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]</a>"
-""",
-                            to: "commits@activemq.apache.org",
-                            recipientProviders: [[$class: 'DevelopersRecipientProvider']]
-                    )
-                }
-            }
-        }
-
-        // Send an email, if the last build was not successful and this one is.
-        success {
-            // Cleanup the build directory if the build was successful
-            // (in this cae we probably don't have to do any post-build analysis)
-            deleteDir()
-            script {
-                if ((env.BRANCH_NAME == "activemq-5.15.x" || env.BRANCH_NAME == "activemq-5.16.x" || env.BRANCH_NAME == "master") && (currentBuild.previousBuild != null) && (currentBuild.previousBuild.result != 'SUCCESS')) {
-                    emailext (
-                            subject: "[BUILD-STABLE]: Job '${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]'",
-                            body: """
-BUILD-STABLE: Job '${env.JOB_NAME} [${env.BRANCH_NAME}] [${env.BUILD_NUMBER}]':
-Is back to normal.
-""",
-                            to: "commits@activemq.apache.org",
-                            recipientProviders: [[$class: 'DevelopersRecipientProvider']]
-                    )
-                }
-            }
-        }
-    }
-
 }
