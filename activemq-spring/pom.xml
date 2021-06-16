@@ -66,6 +66,11 @@
     </dependency>
     <dependency>
       <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-dynamodb-store</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-kahadb-store</artifactId>
       <optional>true</optional>
     </dependency>
@@ -215,6 +220,7 @@
                 <include>${basedir}/../activemq-broker/src/main/java</include>
                 <include>${basedir}/../activemq-camel/src/main/java</include>
                 <include>${basedir}/../activemq-jdbc-store/src/main/java</include>
+                <include>${basedir}/../activemq-dynamodb-store/src/main/java</include>
                 <include>${basedir}/../activemq-kahadb-store/src/main/java</include>
                 <include>${basedir}/../activemq-mqtt/src/main/java</include>
                 <include>${basedir}/../activemq-stomp/src/main/java</include>

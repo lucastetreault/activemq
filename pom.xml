@@ -209,6 +209,7 @@
     <module>activemq-amqp</module>
     <module>activemq-kahadb-store</module>
     <module>activemq-jdbc-store</module>
+    <module>activemq-dynamodb-store</module>
     <module>activemq-all</module>
     <module>activemq-camel</module>
     <module>activemq-console</module>
@@ -278,7 +279,11 @@
         <artifactId>activemq-jdbc-store</artifactId>
         <version>${project.version}</version>
       </dependency>
-
+      <dependency>
+        <groupId>org.apache.activemq</groupId>
+        <artifactId>activemq-dynamodb-store</artifactId>
+        <version>${project.version}</version>
+      </dependency>
       <dependency>
         <groupId>org.apache.activemq</groupId>
         <artifactId>activemq-mqtt</artifactId>
@@ -289,7 +294,6 @@
         <artifactId>activemq-stomp</artifactId>
         <version>${project.version}</version>
       </dependency>
-
       <dependency>
         <groupId>org.apache.activemq</groupId>
         <artifactId>activemq-client</artifactId>
@@ -445,6 +449,13 @@
       <!-- =============================== -->
       <!-- Required dependencies -->
       <!-- =============================== -->
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>2.16.85</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>commons-logging</groupId>
         <artifactId>commons-logging</artifactId>
