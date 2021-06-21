@@ -44,6 +44,10 @@
     </dependency>
     <dependency>
       <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-dynamodb-store</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-kahadb-store</artifactId>
     </dependency>
     <dependency>
@@ -304,6 +308,14 @@
       <groupId>org.mockito</groupId>
       <artifactId>mockito-inline</artifactId>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-unit-tests</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-unit-tests</artifactId>
     </dependency>
   </dependencies>
 

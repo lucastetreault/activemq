@@ -43,6 +43,7 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import org.apache.activemq.ActiveMQMessageAudit;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.broker.LockableServiceSupport;
 import org.apache.activemq.broker.Locker;
 import org.apache.activemq.broker.scheduler.JobSchedulerStore;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -82,94 +83,104 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClientBuilder;
  *
  * @org.apache.xbean.XBean element="dynamoDBPersistenceAdapter"
  */
-public class DynamoDBPersistenceAdapter implements PersistenceAdapter {
+public class DynamoDBPersistenceAdapter extends LockableServiceSupport implements PersistenceAdapter {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DynamoDBPersistenceAdapter.class);
+    private DynamoDbClient dynamoDbClient;
     private Statements statements;
+
+    public Locker createDefaultLocker() throws IOException {
+        Locker locker = new DefaultDatabaseLocker();
+        LOG.debug("Using default dynamodb Locker: " + locker);
+        locker.configure(this);
+        return locker;
+    }
 
 
     @Override
     public Set<ActiveMQDestination> getDestinations() {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public MessageStore createQueueMessageStore(ActiveMQQueue destination) throws IOException {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public TopicMessageStore createTopicMessageStore(ActiveMQTopic destination) throws IOException {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public JobSchedulerStore createJobSchedulerStore() throws IOException, UnsupportedOperationException {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void removeQueueMessageStore(ActiveMQQueue destination) {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void removeTopicMessageStore(ActiveMQTopic destination) {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public TransactionStore createTransactionStore() throws IOException {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void beginTransaction(ConnectionContext context) throws IOException {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void commitTransaction(ConnectionContext context) throws IOException {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void rollbackTransaction(ConnectionContext context) throws IOException {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public long getLastMessageBrokerSequenceId() throws IOException {
-        return 0;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void deleteAllMessages() throws IOException {
-
+        throw new UnsupportedOperationException();
     }
 
+    /**
+     * @param usageManager UsageManager is not applicable to the DynamoDB Persistence Adapter. It is only here to fulfil the interface.
+     */
     @Override
     public void setUsageManager(SystemUsage usageManager) {
-
     }
 
     @Override
     public void setBrokerName(String brokerName) {
-
     }
 
     @Override
     public void setDirectory(File dir) {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public File getDirectory() {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void checkpoint(boolean cleanup) throws IOException {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -179,22 +190,31 @@ public class DynamoDBPersistenceAdapter implements PersistenceAdapter {
 
     @Override
     public long getLastProducerSequenceId(ProducerId id) throws IOException {
-        return 0;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void allowIOResumption() {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void start() throws Exception {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void stop() throws Exception {
+    }
 
+    @Override
+    protected void doStop(ServiceStopper stopper) throws Exception {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    protected void doStart() throws Exception {
+        throw new UnsupportedOperationException();
     }
 
     public Statements getStatements() {
@@ -221,12 +241,20 @@ public class DynamoDBPersistenceAdapter implements PersistenceAdapter {
 
     public DynamoDbClient getClient() {
         // TODO: Load from config - default to local ddb for now!
-        return DynamoDbClient.builder()
-                .endpointOverride(URI.create("http://localhost:8000"))
-                // The region is meaningless for local DynamoDb but required for client builder validation
-                .region(Region.US_EAST_1)
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create("dummy-key", "dummy-secret")))
-                .build();
+        if (dynamoDbClient == null) {
+            dynamoDbClient = DynamoDbClient.builder()
+                    .endpointOverride(URI.create("http://localhost:8000"))
+                    // The region is meaningless for local DynamoDb but required for client builder validation
+                    .region(Region.US_EAST_1)
+                    .credentialsProvider(StaticCredentialsProvider.create(
+                            AwsBasicCredentials.create("dummy-key", "dummy-secret")))
+                    .build();
+        }
+        return dynamoDbClient;
+    }
+
+    @Override
+    public void init() throws Exception {
+        getClient();
     }
 }
