@@ -212,6 +212,7 @@
     <module>activemq-amqp</module>
     <module>activemq-kahadb-store</module>
     <module>activemq-jdbc-store</module>
+    <module>activemq-redis-store</module>
     <module>activemq-unit-tests</module>
     <module>activemq-all</module>
     <module>activemq-console</module>
@@ -283,7 +284,11 @@
         <artifactId>activemq-jdbc-store</artifactId>
         <version>${project.version}</version>
       </dependency>
-
+      <dependency>
+        <groupId>org.apache.activemq</groupId>
+        <artifactId>activemq-redis-store</artifactId>
+        <version>${project.version}</version>
+      </dependency>
       <dependency>
         <groupId>org.apache.activemq</groupId>
         <artifactId>activemq-mqtt</artifactId>
