@@ -18,6 +18,8 @@ package org.apache.activemq.transport;
 
 import java.io.IOException;
 import java.net.URI;
+
+import org.apache.activemq.Service;
 import org.apache.activemq.util.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +32,8 @@ import org.slf4j.LoggerFactory;
 public abstract class TransportSupport extends ServiceSupport implements Transport {
     private static final Logger LOG = LoggerFactory.getLogger(TransportSupport.class);
 
+    private Service transportConnection;
+
     TransportListener transportListener;
 
     /**
@@ -41,7 +45,7 @@ public abstract class TransportSupport extends ServiceSupport implements Transpo
 
     /**
      * Registers an inbound command listener
-     * 
+     *
      * @param commandListener
      */
     public void setTransportListener(TransportListener commandListener) {
@@ -50,7 +54,7 @@ public abstract class TransportSupport extends ServiceSupport implements Transpo
 
     /**
      * narrow acceptance
-     * 
+     *
      * @param target
      * @return 'this' if assignable
      */
@@ -135,4 +139,11 @@ public abstract class TransportSupport extends ServiceSupport implements Transpo
         return isStarted();
     }
 
+    public Service getTransportConnection() {
+        return transportConnection;
+    }
+
+    public void setTransportConnection(Service transportConnection) {
+        this.transportConnection = transportConnection;
+    }
 }

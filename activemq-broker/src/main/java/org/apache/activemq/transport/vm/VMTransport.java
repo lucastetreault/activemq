@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.activemq.Service;
 import org.apache.activemq.command.ShutdownInfo;
 import org.apache.activemq.thread.Task;
 import org.apache.activemq.thread.TaskRunner;
@@ -462,5 +463,15 @@ public class VMTransport implements Transport, Task {
     @Override
     public WireFormat getWireFormat() {
         return null;
+    }
+
+    @Override
+    public Service getTransportConnection() {
+        return null;
+    }
+
+    @Override
+    public void setTransportConnection(Service transportConnection) {
+
     }
 }

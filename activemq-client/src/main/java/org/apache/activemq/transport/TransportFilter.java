@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.security.cert.X509Certificate;
 
+import org.apache.activemq.Service;
 import org.apache.activemq.wireformat.WireFormat;
 
 /**
@@ -194,5 +195,15 @@ public class TransportFilter implements TransportListener, Transport {
     @Override
     public WireFormat getWireFormat() {
         return next.getWireFormat();
+    }
+
+    @Override
+    public Service getTransportConnection() {
+        return next.getTransportConnection();
+    }
+
+    @Override
+    public void setTransportConnection(Service transportConnection) {
+        next.setTransportConnection(transportConnection);
     }
 }

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.security.cert.X509Certificate;
 
+import org.apache.activemq.Service;
 import org.apache.activemq.transport.DefaultTransportListener;
 import org.apache.activemq.transport.FutureResponse;
 import org.apache.activemq.transport.ResponseCallback;
@@ -200,5 +201,15 @@ public class MockTransport extends DefaultTransportListener implements Transport
     @Override
     public WireFormat getWireFormat() {
         return getNext().getWireFormat();
+    }
+
+    @Override
+    public Service getTransportConnection() {
+        return null;
+    }
+
+    @Override
+    public void setTransportConnection(Service transportConnection) {
+
     }
 }

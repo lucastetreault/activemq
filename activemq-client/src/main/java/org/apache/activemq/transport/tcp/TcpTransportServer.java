@@ -16,6 +16,31 @@
  */
 package org.apache.activemq.transport.tcp;
 
+import org.apache.activemq.Service;
+import org.apache.activemq.ThreadPriorities;
+import org.apache.activemq.TransportLoggerSupport;
+import org.apache.activemq.command.BrokerInfo;
+import org.apache.activemq.command.ConnectionError;
+import org.apache.activemq.command.ShutdownInfo;
+import org.apache.activemq.openwire.OpenWireFormatFactory;
+import org.apache.activemq.transport.Transport;
+import org.apache.activemq.transport.TransportFactory;
+import org.apache.activemq.transport.TransportServer;
+import org.apache.activemq.transport.TransportServerThreadSupport;
+import org.apache.activemq.util.IOExceptionSupport;
+import org.apache.activemq.util.InetAddressUtil;
+import org.apache.activemq.util.IntrospectionSupport;
+import org.apache.activemq.util.ServiceListener;
+import org.apache.activemq.util.ServiceStopper;
+import org.apache.activemq.util.ServiceSupport;
+import org.apache.activemq.wireformat.WireFormat;
+import org.apache.activemq.wireformat.WireFormatFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ServerSocketFactory;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLServerSocket;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -39,30 +64,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-
-import javax.net.ServerSocketFactory;
-import javax.net.ssl.SSLParameters;
-import javax.net.ssl.SSLServerSocket;
-
-import org.apache.activemq.Service;
-import org.apache.activemq.ThreadPriorities;
-import org.apache.activemq.TransportLoggerSupport;
-import org.apache.activemq.command.BrokerInfo;
-import org.apache.activemq.openwire.OpenWireFormatFactory;
-import org.apache.activemq.transport.Transport;
-import org.apache.activemq.transport.TransportFactory;
-import org.apache.activemq.transport.TransportServer;
-import org.apache.activemq.transport.TransportServerThreadSupport;
-import org.apache.activemq.util.IOExceptionSupport;
-import org.apache.activemq.util.InetAddressUtil;
-import org.apache.activemq.util.IntrospectionSupport;
-import org.apache.activemq.util.ServiceListener;
-import org.apache.activemq.util.ServiceStopper;
-import org.apache.activemq.util.ServiceSupport;
-import org.apache.activemq.wireformat.WireFormat;
-import org.apache.activemq.wireformat.WireFormatFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A TCP based implementation of {@link TransportServer}
@@ -124,6 +125,12 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
      * The maximum number of sockets allowed for this server
      */
     protected int maximumConnections = Integer.MAX_VALUE;
+
+    /**
+     * Send Max Connections exceeded exception to client if enabled
+     */
+    protected boolean maximumConnectionsResponse = false;
+
     protected final AtomicLong maximumConnectionsExceededCount = new AtomicLong(0l);
     protected final AtomicInteger currentTransportCount = new AtomicInteger();
 
@@ -185,7 +192,7 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
                 if (verifyHostName) {
                     SSLParameters sslParams = new SSLParameters();
                     sslParams.setEndpointIdentificationAlgorithm("HTTPS");
-                    ((SSLServerSocket)this.serverSocket).setSSLParameters(sslParams);
+                    ((SSLServerSocket) this.serverSocket).setSSLParameters(sslParams);
                 }
 
                 if (transportOptions.containsKey("enabledCipherSuites")) {
@@ -193,7 +200,7 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
 
                     if (!IntrospectionSupport.setProperty(socket, "enabledCipherSuites", cipherSuites)) {
                         throw new SocketException(String.format(
-                            "Invalid transport options {enabledCipherSuites=%s}", cipherSuites));
+                                "Invalid transport options {enabledCipherSuites=%s}", cipherSuites));
                     }
                 }
 
@@ -580,12 +587,8 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
             int currentCount;
             do {
                 currentCount = currentTransportCount.get();
-                if (currentCount >= this.maximumConnections) {
-                    this.maximumConnectionsExceededCount.incrementAndGet();
-                    throw new ExceededMaximumConnectionsException(
-                        "Exceeded the maximum number of allowed client connections. See the '" +
-                        "maximumConnections' property on the TCP transport configuration URI " +
-                        "in the ActiveMQ configuration file (e.g., activemq.xml)");
+                if (!maximumConnectionsResponse) {
+                    checkIfConnectionLimitIsExceeded(currentCount);
                  }
 
             //Increment this value before configuring the transport
@@ -621,6 +624,10 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
 
             getAcceptListener().onAccept(configuredTransport);
 
+            if (maximumConnectionsResponse) {
+                sendConnectionErrorIfMaximumConnectionsExceeded(currentCount, configuredTransport);
+            }
+
         } catch (SocketTimeoutException ste) {
             // expect this to happen
         } catch (Exception e) {
@@ -642,6 +649,29 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
                 LOG.warn("run()", e);
                 onAcceptError(e);
             }
+        }
+    }
+
+    private void sendConnectionErrorIfMaximumConnectionsExceeded(int currentCount, Transport transport) throws Exception {
+        try {
+            checkIfConnectionLimitIsExceeded(currentCount);
+        } catch (ExceededMaximumConnectionsException e) {
+            Wait.waitFor(transport::isConnected);
+            ConnectionError connectionError = new ConnectionError();
+            connectionError.setException(e);
+            transport.oneway(connectionError);
+            transport.getTransportConnection().stop();
+            throw e;
+        }
+    }
+
+    private void checkIfConnectionLimitIsExceeded(int currentCount) throws ExceededMaximumConnectionsException {
+        if (currentCount >= this.maximumConnections){
+            this.maximumConnectionsExceededCount.incrementAndGet();
+            throw new ExceededMaximumConnectionsException(
+                    "Exceeded the maximum number of allowed client connections. See the '" +
+                            "maximumConnections' property on the TCP transport configuration URI " +
+                            "in the ActiveMQ configuration file (e.g., activemq.xml)");
         }
     }
 
@@ -685,6 +715,21 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
 
     public void setConnectionTimeout(int connectionTimeout) {
         this.connectionTimeout = connectionTimeout;
+    }
+
+    /**
+     * @return the maximumConnectionsResponse
+     */
+    public boolean getMaximumConnectionsResponse() {
+        return maximumConnectionsResponse;
+    }
+
+    /**
+     * @param maximumConnectionsResponse
+     *            enables maximum connections response
+     */
+    public void setMaximumConnectionsResponse(boolean maximumConnectionsResponse) {
+        this.maximumConnectionsResponse = maximumConnectionsResponse;
     }
 
     /**
@@ -738,5 +783,34 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
     @Override
     public void resetStatistics() {
         this.maximumConnectionsExceededCount.set(0l);
+    }
+
+    public interface Condition {
+        boolean isSatisified() throws Exception;
+    }
+
+    private static class Wait {
+
+        public static final long MAX_WAIT_MILLIS = 30000;
+        public static final long SLEEP_MILLIS = 10;
+
+        public static boolean waitFor(Condition condition) throws Exception {
+            return waitFor(condition, MAX_WAIT_MILLIS);
+        }
+
+        public static boolean waitFor(final Condition condition, final long duration) throws Exception {
+            return waitFor(condition, duration, SLEEP_MILLIS);
+        }
+
+        public static boolean waitFor(final Condition condition, final long duration, final long sleepMillis) throws Exception {
+
+            final long expiry = System.currentTimeMillis() + duration;
+            boolean conditionSatisified = condition.isSatisified();
+            while (!conditionSatisified && System.currentTimeMillis() < expiry) {
+                TimeUnit.MILLISECONDS.sleep(sleepMillis);
+                conditionSatisified = condition.isSatisified();
+            }
+            return conditionSatisified;
+        }
     }
 }

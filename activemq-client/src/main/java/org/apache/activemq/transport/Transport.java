@@ -164,4 +164,18 @@ public interface Transport extends Service {
      */
     WireFormat getWireFormat();
 
+    /**
+     * Retrieves the TransportConnection instance associated with this Transport instance.
+     *
+     * @return the TransportConnection in use.
+     */
+    Service getTransportConnection();
+
+    /**
+     * Sets the TransportConnection instance associated with this Transport instance
+     *
+     * @param transportConnection
+     *      the TransportConnection instance associated with this Transport instance.
+     */
+    void setTransportConnection(Service transportConnection);
 }

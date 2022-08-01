@@ -40,6 +40,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.activemq.MaxFrameSizeExceededException;
+import org.apache.activemq.Service;
 import org.apache.activemq.broker.SslContext;
 import org.apache.activemq.command.Command;
 import org.apache.activemq.command.ConnectionControl;
@@ -1487,5 +1488,20 @@ public class FailoverTransport implements CompositeTransport {
         } else {
             return null;
         }
+    }
+
+    @Override
+    public Service getTransportConnection() {
+        Transport transport = connectedTransport.get();
+        if (transport != null) {
+            return transport.getTransportConnection();
+        } else {
+            return null;
+        }
+    }
+
+    @Override
+    public void setTransportConnection(Service transportConnection) {
+
     }
 }

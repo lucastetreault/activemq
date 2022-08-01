@@ -231,6 +231,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
                                 if (!brokerService.isStopping()) {
                                     Connection connection = createConnection(transport);
                                     connection.start();
+                                    transport.setTransportConnection(connection);
                                 } else {
                                     throw new BrokerStoppedException("Broker " + brokerService + " is being stopped");
                                 }

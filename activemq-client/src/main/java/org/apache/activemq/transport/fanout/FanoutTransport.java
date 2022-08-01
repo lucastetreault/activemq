@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.activemq.Service;
 import org.apache.activemq.command.Command;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.Message;
@@ -647,5 +648,15 @@ public class FanoutTransport implements CompositeTransport {
     @Override
     public WireFormat getWireFormat() {
         return null;
+    }
+
+    @Override
+    public Service getTransportConnection() {
+        return null;
+    }
+
+    @Override
+    public void setTransportConnection(Service transportConnection) {
+
     }
 }

@@ -16,23 +16,10 @@
  */
 package org.apache.activemq.transport.auto;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
+import org.apache.activemq.transport.tcp.ExceededMaximumConnectionsException;
 import org.apache.activemq.transport.tcp.TcpTransportServer;
 import org.apache.activemq.util.Wait;
 import org.apache.activemq.util.Wait.Condition;
@@ -44,6 +31,18 @@ import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
+
+import javax.jms.Connection;
+import javax.jms.ConnectionFactory;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.Assert.*;
 
 @RunWith(Parameterized.class)
 public class AutoTransportConnectionsTest {
@@ -135,6 +134,11 @@ public class AutoTransportConnectionsTest {
                         //sleep for a short period of time
                         Thread.sleep(count * 3);
                         conn = cf.createConnection();
+                        conn.setExceptionListener(e -> {
+                            // Without `maximumConnectionsResponse=true` we should not receive an
+                            // ExceededMaximumConnectionsException even when the connection limit is exceeded!
+                            assertFalse(e.getCause() instanceof ExceededMaximumConnectionsException);
+                        });
                         conn.start();
                     } catch (Exception e) {
                     }
@@ -170,6 +174,71 @@ public class AutoTransportConnectionsTest {
         // Confirm reset statistics
         connector.resetStatistics();
         assertEquals(Long.valueOf(0l), Long.valueOf(connector.getMaxConnectionExceededCount()));
+    }
+
+    @Test
+    public void testMaxConnectionControlWithResponseEnabled() throws Exception {
+        configureConnectorAndStart(transportType + "://0.0.0.0:0?maxConnectionThreadPoolSize=10&maximumConnections=" + maxConnections + "&maximumConnectionsResponse=true");
+
+        final ConnectionFactory cf = createConnectionFactory();
+        final CountDownLatch startupLatch = new CountDownLatch(1);
+
+        final AtomicInteger connectionErrorCount = new AtomicInteger();
+
+        //create an extra 10 connections above max
+        for (int i = 0; i < maxConnections + 10; i++) {
+            final int count = i;
+            executor.submit(() -> {
+                Connection conn = null;
+                try {
+                    startupLatch.await();
+                    //sleep for a short period of time
+                    Thread.sleep(count * 3);
+                    conn = cf.createConnection();
+                    conn.setExceptionListener(e -> {
+                        if (e.getCause() instanceof ExceededMaximumConnectionsException) {
+                            connectionErrorCount.incrementAndGet();
+                        }
+                    });
+                    conn.start();
+                } catch (Exception e) {
+                }
+            });
+        }
+
+        TcpTransportServer transportServer = (TcpTransportServer) connector.getServer();
+        // ensure the max connections is in effect
+        assertEquals(maxConnections, transportServer.getMaximumConnections());
+        // No connections at first
+        assertEquals(0, connector.getConnections().size());
+        // No connections exceeded at first
+        assertEquals(Long.valueOf(0l), Long.valueOf(connector.getMaxConnectionExceededCount()));
+        // Release the latch to set up connections in parallel
+        startupLatch.countDown();
+
+        final TransportConnector connector = this.connector;
+
+        // Expect the max connections is created
+        assertTrue("Expected: " + maxConnections + " found: " + connector.getConnections().size(),
+                Wait.waitFor(() -> connector.getConnections().size() >= maxConnections)
+        );
+
+        // The 10 extra connections exceeded connection count
+        assertEquals(Long.valueOf(10l), Long.valueOf(connector.getMaxConnectionExceededCount()));
+
+        // Confirm reset statistics
+        connector.resetStatistics();
+        assertEquals(Long.valueOf(0l), Long.valueOf(connector.getMaxConnectionExceededCount()));
+
+        // Confirm we received the ExceededMaximumConnectionsException
+        assertTrue("Expected: " + 10L + " found: " + connectionErrorCount.get(),
+                Wait.waitFor(() -> connectionErrorCount.get() == 10L)
+        );
+
+        // Expect the max connections is created
+        assertTrue("Expected: " + maxConnections + " found: " + connector.getConnections().size(),
+                Wait.waitFor(() -> connector.getConnections().size() == maxConnections)
+        );
     }
 
     @Test
