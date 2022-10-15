@@ -136,6 +136,24 @@ public class ManagedRegionBroker extends RegionBroker {
             }
         }
         registeredMBeans.clear();
+        topics.clear();
+        queues.clear();
+        temporaryQueues.clear();
+        temporaryTopics.clear();
+        queueSubscribers.clear();
+        topicSubscribers.clear();
+        durableTopicSubscribers.clear();
+        inactiveDurableTopicSubscribers.clear();
+        temporaryQueueSubscribers.clear();
+        temporaryTopicSubscribers.clear();
+        queueProducers.clear();
+        topicProducers.clear();
+        temporaryQueueProducers.clear();
+        temporaryTopicProducers.clear();
+        dynamicDestinationProducers.clear();
+        subscriptionKeys.clear();
+        subscriptionMap.clear();
+        consumerSubscriptionMap.clear();
     }
 
     @Override
