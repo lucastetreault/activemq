@@ -5,9 +5,9 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,9 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Consumer;
 
 import javax.jms.IllegalStateException;
-import javax.jms.JMSException;
 import javax.management.InstanceNotFoundException;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
@@ -42,7 +42,6 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.jmx.OpenTypeSupport.OpenTypeFactory;
-import org.apache.activemq.broker.region.AbstractRegion;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationFactory;
 import org.apache.activemq.broker.region.DestinationInterceptor;
@@ -62,7 +61,6 @@ import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.command.ConnectionInfo;
-import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
@@ -99,7 +97,8 @@ public class ManagedRegionBroker extends RegionBroker {
     private final Map<ObjectName, ProducerView> dynamicDestinationProducers = new ConcurrentHashMap<>();
     private final Map<SubscriptionKey, ObjectName> subscriptionKeys = new ConcurrentHashMap<>();
     private final Map<Subscription, ObjectName> subscriptionMap = new ConcurrentHashMap<>();
-    private final Set<ObjectName> registeredMBeans = ConcurrentHashMap.newKeySet();
+    private final Map<ConsumerInfo, Subscription> consumerSubscriptionMap = new ConcurrentHashMap<>();
+    private final Set<ObjectName> registeredMBeans = new ConcurrentHashMap<>().newKeySet();
     /* This is the first broker in the broker interceptor chain. */
     private Broker contextBroker;
 
@@ -107,12 +106,13 @@ public class ManagedRegionBroker extends RegionBroker {
     private final long mbeanTimeout;
 
     public ManagedRegionBroker(BrokerService brokerService, ManagementContext context, ObjectName brokerObjectName, TaskRunnerFactory taskRunnerFactory, SystemUsage memoryManager,
-                               DestinationFactory destinationFactory, DestinationInterceptor destinationInterceptor,Scheduler scheduler,ThreadPoolExecutor executor) throws IOException {
-        super(brokerService, taskRunnerFactory, memoryManager, destinationFactory, destinationInterceptor,scheduler,executor);
+                               DestinationFactory destinationFactory, DestinationInterceptor destinationInterceptor, Scheduler scheduler, ThreadPoolExecutor executor) throws IOException {
+        super(brokerService, taskRunnerFactory, memoryManager, destinationFactory, destinationInterceptor, scheduler, executor);
         this.managementContext = context;
         this.brokerObjectName = brokerObjectName;
         this.mbeanTimeout = brokerService.getMbeanInvocationTimeout();
-        this.asyncInvokeService = mbeanTimeout > 0 ? executor : null;;
+        this.asyncInvokeService = mbeanTimeout > 0 ? executor : null;
+        ;
     }
 
     @Override
@@ -126,7 +126,7 @@ public class ManagedRegionBroker extends RegionBroker {
     protected void doStop(ServiceStopper stopper) {
         super.doStop(stopper);
         // lets remove any mbeans not yet removed
-        for (Iterator<ObjectName> iter = registeredMBeans.iterator(); iter.hasNext();) {
+        for (Iterator<ObjectName> iter = registeredMBeans.iterator(); iter.hasNext(); ) {
             ObjectName name = iter.next();
             try {
                 managementContext.unregisterMBean(name);
@@ -165,9 +165,9 @@ public class ManagedRegionBroker extends RegionBroker {
             ObjectName objectName = BrokerMBeanSupport.createDestinationName(brokerObjectName, destName);
             DestinationView view;
             if (destination instanceof Queue) {
-                view = new QueueView(this, (Queue)destination);
+                view = new QueueView(this, (Queue) destination);
             } else if (destination instanceof Topic) {
-                view = new TopicView(this, (Topic)destination);
+                view = new TopicView(this, (Topic) destination);
             } else {
                 view = null;
                 LOG.warn("JMX View is not supported for custom destination {}", destination);
@@ -218,6 +218,7 @@ public class ManagedRegionBroker extends RegionBroker {
                 registerSubscription(objectName, sub.getConsumerInfo(), key, view);
             }
             subscriptionMap.put(sub, objectName);
+            consumerSubscriptionMap.put(sub.getConsumerInfo(), sub);
             return objectName;
         } catch (Exception e) {
             LOG.error("Failed to register subscription {}", sub, e);
@@ -252,60 +253,11 @@ public class ManagedRegionBroker extends RegionBroker {
 
     @Override
     public void removeConsumer(ConnectionContext context, ConsumerInfo info) throws Exception {
-        //Find subscriptions quickly by relying on the maps contained in the different Regions
-        //that map consumer ids and subscriptions
-        final Set<Subscription> subscriptions = findSubscriptions(info);
-
-        if (!subscriptions.isEmpty()) {
-            for (Subscription sub : subscriptions) {
-                // unregister all consumer subs
-                unregisterSubscription(subscriptionMap.get(sub), true);
-                break;
-            }
-        } else {
-            //Fall back to old slow approach where we go through the entire subscription map case something went wrong
-            //and no subscriptions were found - should generally not happen
-            for (Subscription sub : subscriptionMap.keySet()) {
-                if (sub.getConsumerInfo().equals(info)) {
-                    unregisterSubscription(subscriptionMap.get(sub), true);
-                }
-            }
+        if (consumerSubscriptionMap.containsKey(info)) {
+            Subscription sub = consumerSubscriptionMap.remove(info);
+            unregisterSubscription(subscriptionMap.get(sub), true);
         }
-
         super.removeConsumer(context, info);
-    }
-
-    private Set<Subscription> findSubscriptions(final ConsumerInfo info) {
-        final Set<Subscription> subscriptions = new HashSet<>();
-
-        try {
-            if (info.getDestination() != null) {
-                final ActiveMQDestination consumerDest = info.getDestination();
-                //If it's composite then go through and find the subscription for every dest in case different
-                if (consumerDest.isComposite()) {
-                    ActiveMQDestination[] destinations = consumerDest.getCompositeDestinations();
-                    for (ActiveMQDestination destination : destinations) {
-                        addSubscriptionToList(subscriptions, info.getConsumerId(), destination);
-                    }
-                } else {
-                    //This is the case for a non-composite destination which would be most of the time
-                    addSubscriptionToList(subscriptions, info.getConsumerId(), info.getDestination());
-                }
-            }
-        } catch (Exception e) {
-            LOG.warn("Error finding subscription {}: {}", info, e.getMessage());
-        }
-
-        return subscriptions;
-    }
-
-    private void addSubscriptionToList(Set<Subscription> subscriptions,
-        ConsumerId consumerId, ActiveMQDestination dest) throws JMSException {
-        final Subscription matchingSub = ((AbstractRegion) this.getRegion(dest))
-            .getSubscriptions().get(consumerId);
-        if (matchingSub != null) {
-            subscriptions.add(matchingSub);
-        }
     }
 
     @Override
@@ -339,12 +291,14 @@ public class ManagedRegionBroker extends RegionBroker {
                     }
                 }
             }
-         }
+        }
         super.send(exchange, message);
     }
 
     public void unregisterSubscription(Subscription sub) {
         ObjectName name = subscriptionMap.remove(sub);
+        consumerSubscriptionMap.remove(sub.getConsumerInfo());
+
         if (name != null) {
             try {
                 SubscriptionKey subscriptionKey = new SubscriptionKey(sub.getContext().getClientId(), sub.getConsumerInfo().getSubscriptionName());
@@ -399,7 +353,7 @@ public class ManagedRegionBroker extends RegionBroker {
         }
         if (view != null) {
             key = view.getSlowConsumerStrategy();
-            if (key!= null && registeredMBeans.remove(key)) {
+            if (key != null && registeredMBeans.remove(key)) {
                 try {
                     managementContext.unregisterMBean(key);
                 } catch (Throwable e) {
@@ -518,7 +472,7 @@ public class ManagedRegionBroker extends RegionBroker {
                 LOG.debug("Failure reason: ", e);
             }
         }
-        DurableSubscriptionView view = (DurableSubscriptionView)durableTopicSubscribers.remove(key);
+        DurableSubscriptionView view = (DurableSubscriptionView) durableTopicSubscribers.remove(key);
         if (view != null) {
             // need to put this back in the inactive list
             SubscriptionKey subscriptionKey = new SubscriptionKey(view.getClientId(), view.getSubscriptionName());
@@ -539,7 +493,7 @@ public class ManagedRegionBroker extends RegionBroker {
         if (destinations != null) {
             for (ActiveMQDestination dest : destinations) {
                 if (dest.isTopic()) {
-                    SubscriptionInfo[] infos = destinationFactory.getAllDurableSubscriptions((ActiveMQTopic)dest);
+                    SubscriptionInfo[] infos = destinationFactory.getAllDurableSubscriptions((ActiveMQTopic) dest);
                     if (infos != null) {
                         for (int i = 0; i < infos.length; i++) {
                             SubscriptionInfo info = infos[i];
@@ -562,13 +516,13 @@ public class ManagedRegionBroker extends RegionBroker {
     private boolean alreadyKnown(SubscriptionKey key) {
         boolean known = false;
         known = ((TopicRegion) getTopicRegion()).durableSubscriptionExists(key);
-        LOG.trace("Sub with key: {}, {} already registered", key, (known ? "": "not"));
+        LOG.trace("Sub with key: {}, {} already registered", key, (known ? "" : "not"));
         return known;
     }
 
     protected void addInactiveSubscription(SubscriptionKey key, SubscriptionInfo info, Subscription subscription) {
         try {
-            ConsumerInfo offlineConsumerInfo = subscription != null ? subscription.getConsumerInfo() : ((TopicRegion)getTopicRegion()).createInactiveConsumerInfo(info);
+            ConsumerInfo offlineConsumerInfo = subscription != null ? subscription.getConsumerInfo() : ((TopicRegion) getTopicRegion()).createInactiveConsumerInfo(info);
             ObjectName objectName = BrokerMBeanSupport.createSubscriptionName(brokerObjectName, info.getClientId(), offlineConsumerInfo);
             SubscriptionView view = new InactiveDurableSubscriptionView(this, brokerService, key.getClientId(), info, subscription);
 
@@ -605,7 +559,7 @@ public class ManagedRegionBroker extends RegionBroker {
         OpenTypeFactory factory = OpenTypeSupport.getFactory(ActiveMQMessage.class);
         Message[] messages = getSubscriberMessages(view);
         CompositeType ct = factory.getCompositeType();
-        TabularType tt = new TabularType("MessageList", "MessageList", ct, new String[] {"JMSMessageID"});
+        TabularType tt = new TabularType("MessageList", "MessageList", ct, new String[]{"JMSMessageID"});
         TabularDataSupport rc = new TabularDataSupport(tt);
         for (int i = 0; i < messages.length; i++) {
             rc.put(new CompositeDataSupport(ct, factory.getFields(messages[i])));
@@ -613,7 +567,7 @@ public class ManagedRegionBroker extends RegionBroker {
         return rc;
     }
 
-    public void remove(SubscriptionView view, String messageId)  throws Exception {
+    public void remove(SubscriptionView view, String messageId) throws Exception {
         ActiveMQDestination destination = getTopicDestination(view);
         if (destination != null) {
             final Destination topic = getTopicRegion().getDestinationMap().get(destination);
@@ -653,15 +607,15 @@ public class ManagedRegionBroker extends RegionBroker {
         if (view.subscription instanceof DurableTopicSubscription) {
             destination = new ActiveMQTopic(view.getDestinationName());
         } else if (view instanceof InactiveDurableSubscriptionView) {
-            destination = ((InactiveDurableSubscriptionView)view).subscriptionInfo.getDestination();
+            destination = ((InactiveDurableSubscriptionView) view).subscriptionInfo.getDestination();
         }
         return destination;
     }
 
-    private ObjectName[] onlyNonSuppressed (Set<ObjectName> set){
+    private ObjectName[] onlyNonSuppressed(Set<ObjectName> set) {
         List<ObjectName> nonSuppressed = new ArrayList<>();
-        for(ObjectName key : set){
-            if (managementContext.isAllowedToRegister(key)){
+        for (ObjectName key : set) {
+            if (managementContext.isAllowedToRegister(key)) {
                 nonSuppressed.add(key);
             }
         }
@@ -815,7 +769,7 @@ public class ManagedRegionBroker extends RegionBroker {
         ObjectName objectName = null;
         try {
             objectName = BrokerMBeanSupport.createAbortSlowConsumerStrategyName(brokerObjectName, strategy);
-            if (!registeredMBeans.contains(objectName))  {
+            if (!registeredMBeans.contains(objectName)) {
 
                 AbortSlowConsumerStrategyView view = null;
                 if (strategy instanceof AbortSlowAckConsumerStrategy) {
@@ -838,7 +792,7 @@ public class ManagedRegionBroker extends RegionBroker {
     public void registerRecoveredTransactionMBean(XATransaction transaction) {
         try {
             ObjectName objectName = BrokerMBeanSupport.createXATransactionName(brokerObjectName, transaction);
-            if (!registeredMBeans.contains(objectName))  {
+            if (!registeredMBeans.contains(objectName)) {
                 RecoveredXATransactionView view = new RecoveredXATransactionView(this, transaction);
                 if (AsyncAnnotatedMBean.registerMBean(asyncInvokeService, mbeanTimeout, managementContext, view, objectName) != null) {
                     registeredMBeans.add(objectName);
@@ -872,7 +826,7 @@ public class ManagedRegionBroker extends RegionBroker {
 
     public Subscription getSubscriber(ObjectName key) {
         Subscription sub = null;
-        for (Entry<Subscription, ObjectName> entry: subscriptionMap.entrySet()) {
+        for (Entry<Subscription, ObjectName> entry : subscriptionMap.entrySet()) {
             if (entry.getValue().equals(key)) {
                 sub = entry.getKey();
                 break;

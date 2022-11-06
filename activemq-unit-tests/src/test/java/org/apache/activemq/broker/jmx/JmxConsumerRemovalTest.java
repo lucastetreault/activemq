@@ -40,6 +40,7 @@ import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.store.PersistenceAdapter;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.memory.MemoryPersistenceAdapter;
@@ -69,6 +70,7 @@ public class JmxConsumerRemovalTest extends EmbeddedBrokerTestSupport {
 
     public void testCompositeDestConsumerRemoval() throws Exception {
         Map<Subscription, ObjectName> subscriptionMap = getSubscriptionMap();
+        Map<ConsumerInfo, Subscription> consumerSubscriptionMap = getConsumerSubscriptionMap();
         int consumersToAdd = 1000;
         Set<MessageConsumer> consumers = new HashSet<>();
 
@@ -89,6 +91,7 @@ public class JmxConsumerRemovalTest extends EmbeddedBrokerTestSupport {
 
         //Make sure map removed all consumers after close
         assertTrue(Wait.waitFor(() -> 0 == subscriptionMap.size(), 5000, 500));
+        assertTrue(Wait.waitFor(() -> 0 == consumerSubscriptionMap.size(), 5000, 500));
         assertTrue(Wait.waitFor(() -> 0 == regionBroker.getQueueSubscribers().length +
             regionBroker.getTopicSubscribers().length, 5000, 500));
     }
@@ -104,6 +107,7 @@ public class JmxConsumerRemovalTest extends EmbeddedBrokerTestSupport {
     public void testDurableConsumerRemoval(ActiveMQDestination dest) throws Exception {
         int consumersToAdd = 1000;
         Set<MessageConsumer> durables = new HashSet<>();
+        Map<ConsumerInfo, Subscription> consumerSubscriptionMap = getConsumerSubscriptionMap();
 
         //Create a lot of durables and then
         for (int i = 0; i < consumersToAdd; i++) {
@@ -119,6 +123,7 @@ public class JmxConsumerRemovalTest extends EmbeddedBrokerTestSupport {
 
         //Make sure map removed all consumers after close
         assertTrue(Wait.waitFor(() -> 0 == regionBroker.getDurableTopicSubscribers().length, 5000, 500));
+        assertTrue(Wait.waitFor(() -> 0 == consumerSubscriptionMap.size(), 5000, 500));
         //Note we can't check the subscription map as the durables still exist, just offline
     }
 
@@ -165,6 +170,12 @@ public class JmxConsumerRemovalTest extends EmbeddedBrokerTestSupport {
         Field subMapField = ManagedRegionBroker.class.getDeclaredField("subscriptionMap");
         subMapField.setAccessible(true);
         return (Map<Subscription, ObjectName>) subMapField.get(regionBroker);
+    }
+    private Map<ConsumerInfo, Subscription> getConsumerSubscriptionMap() throws Exception {
+        ManagedRegionBroker regionBroker = (ManagedRegionBroker) broker.getBroker().getAdaptor(ManagedRegionBroker.class);
+        Field subMapField = ManagedRegionBroker.class.getDeclaredField("consumerSubscriptionMap");
+        subMapField.setAccessible(true);
+        return (Map<ConsumerInfo, Subscription>) subMapField.get(regionBroker);
     }
 
     protected void setUp() throws Exception {
