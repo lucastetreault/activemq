@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.activemq.transport.discovery.masterslave;
+package org.apache.activemq.transport.discovery.primarybackup;
 
 import java.net.URI;
 import org.apache.activemq.transport.discovery.simple.SimpleDiscoveryAgent;
@@ -22,12 +22,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A static DiscoveryAgent that supports connecting to a Master / Slave tuple
+ * A static DiscoveryAgent that supports connecting to a Active / Standby tuple
  * of brokers.
  */
-public class MasterSlaveDiscoveryAgent extends SimpleDiscoveryAgent {
+public class PrimaryBackupDiscoveryAgent extends SimpleDiscoveryAgent {
 
-    private final static Logger LOG = LoggerFactory.getLogger(MasterSlaveDiscoveryAgent.class);
+    private final static Logger LOG = LoggerFactory.getLogger(PrimaryBackupDiscoveryAgent.class);
 
     private String[] msServices = new String[]{};
 
@@ -59,7 +59,7 @@ public class MasterSlaveDiscoveryAgent extends SimpleDiscoveryAgent {
 
     protected void configureServices() {
         if ((msServices == null) || (msServices.length < 2)) {
-            LOG.error("masterSlave requires at least 2 URIs");
+            LOG.error("primarybackup requires at least 2 URIs");
             msServices = new String[]{};
             throw new IllegalArgumentException("Expecting at least 2 arguments");
         }
